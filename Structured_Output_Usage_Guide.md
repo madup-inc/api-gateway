@@ -9,13 +9,12 @@ http://ai-api-gateway.tech.madup
 ## 목차
 
 1. [Structured Output이란?](#1-structured-output이란)
-2. [기본 구조](#2-기본-구조)
-3. [타입 시스템](#3-타입-시스템)
+2. [Pydantic으로 스키마 정의하기](#2-pydantic으로-스키마-정의하기)
+3. [JSON Schema 구조 참조](#3-json-schema-구조-참조)
 4. [스키마 설계 패턴](#4-스키마-설계-패턴)
-5. [Pydantic으로 스키마 정의하기](#5-pydantic으로-스키마-정의하기)
-6. [에러 처리와 엣지 케이스](#6-에러-처리와-엣지-케이스)
-7. [베스트 프랙티스](#7-베스트-프랙티스)
-8. [빠른 참조 (스키마 템플릿)](#8-빠른-참조-스키마-템플릿)
+5. [에러 처리와 엣지 케이스](#5-에러-처리와-엣지-케이스)
+6. [베스트 프랙티스](#6-베스트-프랙티스)
+7. [빠른 참조 (스키마 템플릿)](#7-빠른-참조-스키마-템플릿)
 
 ---
 
@@ -37,24 +36,134 @@ Structured Output은 LLM의 응답을 미리 정의한 JSON Schema에 맞춰 반
 - 분류, 분석, 추출 결과를 일관된 포맷으로 받고 싶을 때
 - 여러 모델 응답을 비교하거나 합치는 파이프라인에서
 
+### 활용 예시
+
+| Prompt | Pydantic Schema | Structured Output 응답 |
+|---|---|---|
+| `"서울의 인구를 알려줘."` | `class CityInfo(BaseModel):`<br>`  city: str`<br>`  population: int` | `{"city": "서울", "population": 9400000}` |
+| `"로그인 버튼 클릭 시 500 에러가 발생합니다."` | `class Ticket(BaseModel):`<br>`  category: Category  # enum`<br>`  priority: Priority  # enum`<br>`  summary: str` | `{"category": "bug", "priority": "critical", "summary": "로그인 500 에러"}` |
+| `"Invoice: ABC Co., INV-001, 2026-04-16, 총액 110,000원"` | `class Invoice(BaseModel):`<br>`  vendor_name: str`<br>`  invoice_number: str`<br>`  total: float` | `{"vendor_name": "ABC Co.", "invoice_number": "INV-001", "total": 110000.0}` |
+| `"커피가 맛있고 직원이 친절하지만 주차가 불편해요."` | `class Review(BaseModel):`<br>`  overall_score: float`<br>`  strengths: list[str]`<br>`  weaknesses: list[str]` | `{"overall_score": 7.5, "strengths": ["맛", "친절"], "weaknesses": ["주차"]}` |
+| `"2026년 AI 산업은 멀티모달 모델 중심으로 급성장 중..."` | `class Summary(BaseModel):`<br>`  title: str`<br>`  key_points: list[str]`<br>`  language: Language  # enum` | `{"title": "2026 AI 산업 동향", "key_points": ["멀티모달", "에이전트"], "language": "ko"}` |
+
 ---
 
-## 2. 기본 구조
+## 2. Pydantic으로 스키마 정의하기
 
-### 2.1 필수 설정
+Python에서 Structured Output을 사용하는 권장 방법입니다. Pydantic `BaseModel`로 원하는 응답 구조를 정의하고, `model_json_schema()`로 JSON Schema를 자동 생성하여 API에 전달합니다.
 
-Structured Output을 활성화하려면 `config` 내에 두 필드를 함께 설정합니다:
+### 2.1 기본 흐름
 
-```json
-"config": {
-  "response_mime_type": "application/json",   // 필수: JSON 출력 활성화
-  "response_schema": { ... }                  // 필수: 응답 JSON Schema 정의
-}
+```python
+from pydantic import BaseModel
+import requests
+
+# 1. 원하는 응답 구조를 Pydantic 모델로 정의
+class CityInfo(BaseModel):
+    city: str
+    population: int
+    area_km2: float
+
+# 2. model_json_schema()로 JSON Schema 자동 생성
+schema = CityInfo.model_json_schema()
+# → {"title": "CityInfo", "type": "object", "properties": {...}, "required": [...]}
+
+# 3. config에 schema를 담아 API 호출
+response = requests.post(
+    f"{BASE_URL}/v1/tasks/generate-text",
+    headers=HEADERS,
+    json={
+        "payload": {
+            "model": "gemini-3-flash-preview",
+            "contents": ["서울의 인구와 면적을 알려줘."],
+            "config": {
+                "response_mime_type": "application/json",   # 필수
+                "response_schema": CityInfo.model_json_schema(),  # 필수
+                "temperature": 0.3
+            }
+        }
+    }
+)
+
+data = response.json()
+if data["status"] == "success":
+    city = CityInfo(**data["result"]["parsed"])
+    print(f"{city.city}: 인구 {city.population:,}명")
 ```
 
-`response_mime_type`을 `"application/json"`으로 설정하면, 모델은 반드시 `response_schema`에 정의된 구조로 응답합니다.
+### 2.2 Enum 활용
 
-### 2.2 Schema 기본 구조
+enum 필드를 정의하면 모델이 반드시 지정한 값 중 하나로만 응답합니다.
+
+```python
+from enum import Enum
+from pydantic import BaseModel
+
+class Sentiment(str, Enum):
+    positive = "positive"
+    negative = "negative"
+    neutral = "neutral"
+
+class Priority(str, Enum):
+    critical = "critical"
+    high = "high"
+    medium = "medium"
+    low = "low"
+
+class TicketAnalysis(BaseModel):
+    title: str
+    sentiment: Sentiment
+    priority: Priority
+    tags: list[str]
+```
+
+### 2.3 중첩 모델
+
+다른 `BaseModel`을 필드 타입으로 사용하면 중첩 구조를 쉽게 표현할 수 있습니다.
+
+```python
+from pydantic import BaseModel
+
+class Ingredient(BaseModel):
+    name: str
+    quantity: str
+    category: str
+
+class Recipe(BaseModel):
+    recipe_name: str
+    ingredients: list[Ingredient]   # 객체 배열
+    cooking_time: str
+
+class RecipeBook(BaseModel):
+    recipes: list[Recipe]           # 중첩 배열
+
+# 자동 생성된 스키마가 모든 중첩 구조를 포함합니다
+schema = RecipeBook.model_json_schema()
+```
+
+### 2.4 Optional 필드
+
+`null`이 허용되는 필드는 `Optional`을 사용합니다. 모델이 해당 정보를 찾지 못할 경우 `null`을 반환합니다.
+
+```python
+from typing import Optional
+from pydantic import BaseModel
+
+class ProductInfo(BaseModel):
+    name: str
+    price: float
+    discount_rate: Optional[float] = None    # 할인이 없을 수 있음
+    description: Optional[str] = None        # 설명이 없을 수 있음
+    in_stock: bool
+```
+
+---
+
+## 3. JSON Schema 구조 참조
+
+Pydantic 없이 JSON Schema를 직접 작성하거나, `model_json_schema()`가 생성하는 구조를 이해하고 싶을 때 참조합니다.
+
+### 3.1 Schema 기본 구조
 
 ```json
 "response_schema": {
@@ -69,11 +178,7 @@ Structured Output을 활성화하려면 `config` 내에 두 필드를 함께 설
 }
 ```
 
----
-
-## 3. 타입 시스템
-
-### 3.1 기본 타입
+### 3.2 기본 타입
 
 | 타입 | 스키마 표기 | 설명 |
 |---|---|---|
@@ -82,7 +187,7 @@ Structured Output을 활성화하려면 `config` 내에 두 필드를 함께 설
 | `number` | `{"type": "number"}` | 실수. 소수점 포함 가능 |
 | `boolean` | `{"type": "boolean"}` | `true` / `false` |
 
-### 3.2 복합 타입
+### 3.3 복합 타입
 
 #### Array (배열)
 
@@ -318,125 +423,9 @@ Structured Output을 활성화하려면 `config` 내에 두 필드를 함께 설
 
 ---
 
-## 5. Pydantic으로 스키마 정의하기
+## 5. 에러 처리와 엣지 케이스
 
-Python에서는 JSON Schema를 직접 작성하는 대신 Pydantic `BaseModel`을 사용하면 타입 안전성과 자동 스키마 생성을 모두 얻을 수 있습니다.
-
-### 5.1 기본 모델
-
-```python
-from pydantic import BaseModel
-
-class CityInfo(BaseModel):
-    city: str
-    population: int
-    area_km2: float
-
-# API 요청 시:
-schema = CityInfo.model_json_schema()
-# → {"title": "CityInfo", "properties": {...}, "required": [...], "type": "object"}
-```
-
-### 5.2 Enum 활용
-
-```python
-from enum import Enum
-from pydantic import BaseModel
-
-class Sentiment(str, Enum):
-    positive = "positive"
-    negative = "negative"
-    neutral = "neutral"
-
-class Priority(str, Enum):
-    critical = "critical"
-    high = "high"
-    medium = "medium"
-    low = "low"
-
-class TicketAnalysis(BaseModel):
-    title: str
-    sentiment: Sentiment
-    priority: Priority
-    tags: list[str]
-```
-
-### 5.3 중첩 모델
-
-```python
-from pydantic import BaseModel
-
-class Ingredient(BaseModel):
-    name: str
-    quantity: str
-    category: str
-
-class Recipe(BaseModel):
-    recipe_name: str
-    ingredients: list[Ingredient]   # 객체 배열
-    cooking_time: str
-
-class RecipeBook(BaseModel):
-    recipes: list[Recipe]           # 중첩 배열
-
-# 자동 생성된 스키마가 모든 중첩 구조를 포함합니다
-schema = RecipeBook.model_json_schema()
-```
-
-### 5.4 Optional 필드
-
-`null`이 허용되는 필드는 `Optional`을 사용합니다. 모델이 해당 정보를 찾지 못할 경우 `null`을 반환합니다.
-
-```python
-from typing import Optional
-from pydantic import BaseModel
-
-class ProductInfo(BaseModel):
-    name: str
-    price: float
-    discount_rate: Optional[float] = None    # 할인이 없을 수 있음
-    description: Optional[str] = None        # 설명이 없을 수 있음
-    in_stock: bool
-```
-
-### 5.5 요청 예제
-
-```python
-import requests
-from pydantic import BaseModel
-
-class CityInfo(BaseModel):
-    city: str
-    population: int
-    area_km2: float
-
-response = requests.post(
-    f"{BASE_URL}/v1/tasks/generate-text",
-    headers=HEADERS,
-    json={
-        "payload": {
-            "model": "gemini-3-flash-preview",
-            "contents": ["서울의 인구와 면적을 알려줘."],
-            "config": {
-                "response_mime_type": "application/json",
-                "response_schema": CityInfo.model_json_schema(),
-                "temperature": 0.3
-            }
-        }
-    }
-)
-
-data = response.json()
-if data["status"] == "success":
-    city = CityInfo(**data["result"]["parsed"])
-    print(f"{city.city}: 인구 {city.population:,}명")
-```
-
----
-
-## 6. 에러 처리와 엣지 케이스
-
-### 6.1 parsed가 null인 경우
+### 5.1 parsed가 null인 경우
 
 API 응답의 `result.parsed`는 게이트웨이가 자동으로 JSON을 파싱한 결과입니다. 스키마를 완전히 준수하지 못한 경우 `null`이 반환될 수 있으므로, `result.text`를 폴백으로 직접 파싱해야 합니다.
 
@@ -451,7 +440,7 @@ if result.get("parsed") is not None:
 return json.loads(result["text"])
 ```
 
-### 6.2 MAX_TOKENS 처리
+### 5.2 MAX_TOKENS 처리
 
 `candidates[0]["finish_reason"]`가 `"MAX_TOKENS"`이면 출력이 중간에 잘려 JSON이 불완전합니다. 이 경우 파싱을 시도하지 말고 즉시 오류를 발생시켜야 합니다.
 
@@ -463,7 +452,7 @@ if finish == "MAX_TOKENS":
     )
 ```
 
-### 6.3 권장 에러 처리 패턴
+### 5.3 권장 에러 처리 패턴
 
 ```python
 import json
@@ -512,9 +501,9 @@ def generate_structured(contents, schema, **config_opts):
 
 ---
 
-## 7. 베스트 프랙티스
+## 6. 베스트 프랙티스
 
-### 7.1 스키마 설계
+### 6.1 스키마 설계
 
 - 필드 이름을 명확하고 설명적으로 작성하세요 (`s` → `sentiment`, `desc` → `description`)
 - `required` 배열에 핵심 필드를 모두 명시하세요. 누락을 방지합니다
@@ -522,13 +511,13 @@ def generate_structured(contents, schema, **config_opts):
 - 중첩은 3단계 이하로 유지하세요. 너무 깊으면 토큰 소모가 커집니다
 - 불필요한 필드는 제거하세요. 스키마가 단순할수록 응답 품질이 높아집니다
 
-### 7.2 성능 최적화
+### 6.2 성능 최적화
 
 - 추출/분류 작업은 `thinking_level: "low"`로 속도를 높이세요
 - `temperature`를 낮게 (0.0~0.3) 설정하면 스키마 준수율이 높아집니다
 - `max_output_tokens`를 스키마 크기에 맞게 적절히 설정하세요
 
-### 7.3 안정성
+### 6.3 안정성
 
 - `use_retry: true` (기본값)를 유지하여 일시적 오류에 대비하세요
 - `finish_reason`을 항상 확인하여 `MAX_TOKENS` 및 `SAFETY`를 감지하세요
@@ -536,7 +525,7 @@ def generate_structured(contents, schema, **config_opts):
 
 ---
 
-## 8. 빠른 참조 (스키마 템플릿)
+## 7. 빠른 참조 (스키마 템플릿)
 
 자주 사용되는 스키마 패턴을 복사하여 사용할 수 있습니다.
 
