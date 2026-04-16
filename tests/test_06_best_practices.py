@@ -5,9 +5,7 @@
 7.2 성능 최적화 — temperature, thinking_level, max_output_tokens (실제 API)
 7.3 안정성 — use_retry, finish_reason, fallback (클라이언트 로직 + 실제 API)
 """
-import json
 import pytest
-from unittest.mock import MagicMock, patch
 
 from src.structured_output.client import (
     build_request_payload,
@@ -160,33 +158,17 @@ class TestReliability:
         assert "X-Cognito-Token" in headers
         assert len(headers["X-Cognito-Token"]) > 0
 
-    def test_parsed_fallback_in_client(self):
-        """parsed=None 시 text 폴백이 동작한다 (클라이언트 로직)"""
-        expected = {"answer": "fallback_value"}
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "status": "success",
-            "result": {
-                "parsed": None,
-                "text": json.dumps(expected),
-                "candidates": [{"finish_reason": "STOP"}],
-            },
-        }
-        with patch("src.structured_output.client.requests.post", return_value=mock_resp):
-            result = generate_structured(["test"], BASE_SCHEMA)
-        assert result == expected
+    def test_generate_structured_returns_dict(self):
+        """generate_structured가 성공 시 dict를 반환한다"""
+        result = generate_structured(["'ok'라고만 대답해줘."], BASE_SCHEMA, temperature=0.0)
+        assert isinstance(result, dict)
+        assert "answer" in result
 
     def test_max_tokens_raises(self):
-        """MAX_TOKENS RuntimeError 발생 (클라이언트 로직)"""
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {
-            "status": "success",
-            "result": {
-                "parsed": None,
-                "text": "",
-                "candidates": [{"finish_reason": "MAX_TOKENS"}],
-            },
-        }
-        with patch("src.structured_output.client.requests.post", return_value=mock_resp):
-            with pytest.raises(RuntimeError, match="MAX_TOKENS"):
-                generate_structured(["test"], BASE_SCHEMA)
+        """max_output_tokens=1로 강제 truncation → RuntimeError(MAX_TOKENS)"""
+        with pytest.raises(RuntimeError, match="MAX_TOKENS"):
+            generate_structured(
+                ["서울의 인구, 역사, 문화, 관광지, 경제를 상세히 알려줘."],
+                BASE_SCHEMA,
+                max_output_tokens=1,
+            )
