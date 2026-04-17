@@ -1,0 +1,10 @@
+{
+  "title": "MySchema",
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" },
+    "value": { "type": "number" },
+    "active": { "type": "boolean" }
+  },
+  "required": ["name", "value", "active"]
+}
