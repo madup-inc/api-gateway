@@ -46,7 +46,7 @@ Structured Output은 LLM의 응답을 미리 정의한 JSON Schema에 맞춰 반
 <tr><th>Pydantic Schema</th><td><pre><code>class CityInfo(BaseModel):
     city: str
     population: int</code></pre></td></tr>
-<tr><th>JSON Schema</th><td><pre><code>{
+<tr><th>CityInfo.model_json_schema()</th><td><pre><code>{
   "title": "CityInfo",
   "type": "object",
   "properties": {
@@ -79,7 +79,7 @@ class Ticket(BaseModel):
     category: Category
     priority: Priority
     summary: str</code></pre></td></tr>
-<tr><th>JSON Schema</th><td><pre><code>{
+<tr><th>Ticket.model_json_schema()</th><td><pre><code>{
   "title": "Ticket",
   "type": "object",
   "properties": {
@@ -112,7 +112,7 @@ class Ticket(BaseModel):
     vendor_name: str
     invoice_number: str
     total: float</code></pre></td></tr>
-<tr><th>JSON Schema</th><td><pre><code>{
+<tr><th>Invoice.model_json_schema()</th><td><pre><code>{
   "title": "Invoice",
   "type": "object",
   "properties": {
@@ -139,7 +139,7 @@ class Ticket(BaseModel):
     overall_score: float
     strengths: list[str]
     weaknesses: list[str]</code></pre></td></tr>
-<tr><th>JSON Schema</th><td><pre><code>{
+<tr><th>Review.model_json_schema()</th><td><pre><code>{
   "title": "Review",
   "type": "object",
   "properties": {
@@ -176,7 +176,7 @@ class Summary(BaseModel):
     title: str
     key_points: list[str]
     language: Language</code></pre></td></tr>
-<tr><th>JSON Schema</th><td><pre><code>{
+<tr><th>Summary.model_json_schema()</th><td><pre><code>{
   "title": "Summary",
   "type": "object",
   "properties": {
