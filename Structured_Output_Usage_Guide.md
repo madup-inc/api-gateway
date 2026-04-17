@@ -43,10 +43,10 @@ Structured Output은 LLM의 응답을 미리 정의한 JSON Schema에 맞춰 반
 <table>
 <tr><th colspan="2">Request</th></tr>
 <tr><th>Prompt</th><td>"서울의 인구를 알려줘."</td></tr>
-<tr><th>Pydantic Schema</th><td><pre><code>class CityInfo(BaseModel):
+<tr><th>Pydantic Schema</th><td><pre><code class="language-python">class CityInfo(BaseModel):
     city: str
     population: int</code></pre></td></tr>
-<tr><th>CityInfo.model_json_schema()</th><td><pre><code>{
+<tr><th>CityInfo.model_json_schema()</th><td><pre><code class="language-json">{
   "title": "CityInfo",
   "type": "object",
   "properties": {
@@ -56,7 +56,7 @@ Structured Output은 LLM의 응답을 미리 정의한 JSON Schema에 맞춰 반
   "required": ["city", "population"]
 }</code></pre></td></tr>
 <tr><th colspan="2">Response</th></tr>
-<tr><th>Structured Output 응답</th><td><pre><code>{
+<tr><th>Structured Output 응답</th><td><pre><code class="language-json">{
   "city": "서울",
   "population": 9400000
 }</code></pre></td></tr>
@@ -67,7 +67,7 @@ Structured Output은 LLM의 응답을 미리 정의한 JSON Schema에 맞춰 반
 <table>
 <tr><th colspan="2">Request</th></tr>
 <tr><th>Prompt</th><td>"로그인 버튼 클릭 시 500 에러가 발생합니다."</td></tr>
-<tr><th>Pydantic Schema</th><td><pre><code>class Category(str, Enum):
+<tr><th>Pydantic Schema</th><td><pre><code class="language-python">class Category(str, Enum):
     bug = "bug"
     feature = "feature_request"
 
@@ -79,7 +79,7 @@ class Ticket(BaseModel):
     category: Category
     priority: Priority
     summary: str</code></pre></td></tr>
-<tr><th>Ticket.model_json_schema()</th><td><pre><code>{
+<tr><th>Ticket.model_json_schema()</th><td><pre><code class="language-json">{
   "title": "Ticket",
   "type": "object",
   "properties": {
@@ -96,7 +96,7 @@ class Ticket(BaseModel):
   "required": ["category", "priority", "summary"]
 }</code></pre></td></tr>
 <tr><th colspan="2">Response</th></tr>
-<tr><th>Structured Output 응답</th><td><pre><code>{
+<tr><th>Structured Output 응답</th><td><pre><code class="language-json">{
   "category": "bug",
   "priority": "critical",
   "summary": "로그인 버튼 클릭 시 500 에러"
@@ -108,7 +108,7 @@ class Ticket(BaseModel):
 <table>
 <tr><th colspan="2">Request</th></tr>
 <tr><th>Prompt</th><td>"다음 기사를 요약해줘.<br><br>2026년 인공지능 산업은 급속도로 발전하고 있습니다. 특히 멀티모달 모델과 에이전트 기술이 주목받고 있으며, 기업들의 AI 도입률도 크게 증가했습니다. 전문가들은 향후 5년간 AI가 대부분의 산업을 변화시킬 것으로 전망합니다."</td></tr>
-<tr><th>Pydantic Schema</th><td><pre><code>class Language(str, Enum):
+<tr><th>Pydantic Schema</th><td><pre><code class="language-python">class Language(str, Enum):
     ko = "ko"
     en = "en"
 
@@ -116,7 +116,7 @@ class Summary(BaseModel):
     title: str
     key_points: list[str]
     language: Language</code></pre></td></tr>
-<tr><th>Summary.model_json_schema()</th><td><pre><code>{
+<tr><th>Summary.model_json_schema()</th><td><pre><code class="language-json">{
   "title": "Summary",
   "type": "object",
   "properties": {
@@ -133,7 +133,7 @@ class Summary(BaseModel):
   "required": ["title", "key_points", "language"]
 }</code></pre></td></tr>
 <tr><th colspan="2">Response</th></tr>
-<tr><th>Structured Output 응답</th><td><pre><code>{
+<tr><th>Structured Output 응답</th><td><pre><code class="language-json">{
   "title": "2026 AI 산업 동향",
   "key_points": [
     "멀티모달 모델 부상",
