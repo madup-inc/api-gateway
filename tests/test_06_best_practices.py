@@ -7,11 +7,8 @@
 """
 import pytest
 
-from src.structured_output.client import (
-    build_request_payload,
-    generate_structured,
-    get_headers,
-)
+from src.structured_output.client import build_request_payload, get_headers
+from tests.utils import generate_structured
 
 BASE_SCHEMA = {
     "title": "Result",

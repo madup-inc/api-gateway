@@ -228,11 +228,10 @@ HEADERS = {
 
 ### 2.1 기본 흐름
 
-`generate_structured` 헬퍼를 사용하면 스키마 정의와 API 호출을 간결하게 처리할 수 있습니다.
-
 ```python
+import json
+import requests
 from pydantic import BaseModel
-from src.structured_output.client import generate_structured
 
 # 1. 원하는 응답 구조를 Pydantic 모델로 정의
 class CityInfo(BaseModel):
@@ -240,19 +239,28 @@ class CityInfo(BaseModel):
     population: int
     area_km2: float
 
-# 2. generate_structured로 호출 — 내부적으로 model_json_schema()를 그대로 전달
-result = generate_structured(
-    ["서울의 인구와 면적을 알려줘."],
-    CityInfo.model_json_schema(),
-    temperature=0.3,
+# 2. model_json_schema()로 JSON Schema 자동 생성 후 API 호출
+response = requests.post(
+    f"{BASE_URL}/v1/tasks/generate-text",
+    headers=HEADERS,
+    timeout=60,
+    json={
+        "payload": {
+            "model": "gemini-3-flash-preview",
+            "contents": ["서울의 인구와 면적을 알려줘."],
+            "config": {
+                "response_mime_type": "application/json",   # 필수
+                "response_schema": CityInfo.model_json_schema(),  # 필수
+                "temperature": 0.3,
+            }
+        }
+    }
 )
 
-# 3. 결과를 Pydantic 모델로 파싱
-city = CityInfo(**result)
-print(f"{city.city}: 인구 {city.population:,}명")
+data = response.json()
 ```
 
-**API 응답 구조** (내부적으로 `generate_structured`가 처리하는 raw response):
+**API 응답 구조:**
 
 ```json
 {
@@ -265,7 +273,16 @@ print(f"{city.city}: 인구 {city.population:,}명")
 }
 ```
 
-`result.parsed`에 파싱된 딕셔너리가 있으면 그대로 반환하고, `null`이면 `result.text`를 직접 파싱합니다. `finish_reason`이 `STOP`이 아니면 오류로 처리합니다 (자세한 내용은 [섹션 5](#5-에러-처리와-엣지-케이스) 참조).
+```python
+# 3. 응답 파싱 후 Pydantic 모델로 변환
+if data["status"] == "success":
+    result = data["result"]
+    parsed = result.get("parsed") or json.loads(result["text"])
+    city = CityInfo(**parsed)
+    print(f"{city.city}: 인구 {city.population:,}명")
+```
+
+`result.parsed`에 파싱된 딕셔너리가 있으면 그대로 사용하고, `null`이면 `result.text`를 직접 파싱합니다. `finish_reason`이 `STOP`이 아닌 경우 처리 방법은 [섹션 5](#5-에러-처리와-엣지-케이스)를 참조하세요.
 
 ### 2.2 Enum 활용
 
@@ -833,57 +850,48 @@ if finish == "MAX_TOKENS":
     )
 ```
 
-### 5.3 generate_structured 내부 구현
+### 5.3 권장 에러 처리 패턴
 
-섹션 2.1에서 소개한 `generate_structured` 헬퍼의 전체 구현입니다. 위의 에러 처리 패턴이 모두 포함되어 있습니다.
+위의 처리를 모두 포함한 전체 요청 코드입니다.
 
 ```python
 import json
 import requests
 
-def generate_structured(contents, schema, **config_opts):
-    """Structured Output 요청 및 결과 파싱 헬퍼"""
-    response = requests.post(
-        f"{BASE_URL}/v1/tasks/generate-text",
-        headers=HEADERS,
-        timeout=60,
-        json={
-            "payload": {
-                "model": "gemini-3-flash-preview",
-                "contents": contents,
-                "config": {
-                    "response_mime_type": "application/json",
-                    "response_schema": schema,
-                    **config_opts,
-                }
+response = requests.post(
+    f"{BASE_URL}/v1/tasks/generate-text",
+    headers=HEADERS,
+    timeout=60,
+    json={
+        "payload": {
+            "model": "gemini-3-flash-preview",
+            "contents": contents,
+            "config": {
+                "response_mime_type": "application/json",
+                "response_schema": schema,
+                **config_opts,
             }
         }
-    )
+    }
+)
 
-    if not response.ok:
-        raise RuntimeError(f"HTTP {response.status_code}: {response.text[:200]}")
+if not response.ok:
+    raise RuntimeError(f"HTTP {response.status_code}: {response.text[:200]}")
 
-    data = response.json()
+data = response.json()
 
-    if data["status"] != "success":
-        raise RuntimeError(
-            f"{data['error']['type']}: {data['error']['message']}"
-        )
+if data["status"] != "success":
+    raise RuntimeError(f"{data['error']['type']}: {data['error']['message']}")
 
-    result = data["result"]
+result = data["result"]
 
-    # finish_reason 확인
-    finish = result["candidates"][0].get("finish_reason")
-    if finish == "MAX_TOKENS":
-        raise RuntimeError("MAX_TOKENS: 스키마를 단순화하거나 "
-                           "max_output_tokens를 늘려주세요")
+# finish_reason 확인
+finish = result["candidates"][0].get("finish_reason")
+if finish == "MAX_TOKENS":
+    raise RuntimeError("MAX_TOKENS: 스키마를 단순화하거나 max_output_tokens를 늘려주세요")
 
-    # parsed 확인
-    if result.get("parsed") is not None:
-        return result["parsed"]
-
-    # 폴백: text 직접 파싱
-    return json.loads(result["text"])
+# parsed 확인 후 폴백
+parsed = result.get("parsed") or json.loads(result["text"])
 ```
 
 ---

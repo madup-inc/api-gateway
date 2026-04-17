@@ -10,11 +10,8 @@ import json
 import pytest
 import requests
 
-from src.structured_output.client import (
-    BASE_URL,
-    generate_structured,
-    get_headers,
-)
+from src.structured_output.client import BASE_URL, get_headers
+from tests.utils import generate_structured
 
 SIMPLE_SCHEMA = {
     "title": "Simple",

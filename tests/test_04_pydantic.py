@@ -13,7 +13,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from src.structured_output.client import generate_structured
+from tests.utils import generate_structured
 
 
 class CityInfo(BaseModel):

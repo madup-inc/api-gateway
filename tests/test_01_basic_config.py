@@ -8,7 +8,8 @@
 """
 import pytest
 
-from src.structured_output.client import BASE_URL, build_request_payload, generate_structured
+from src.structured_output.client import BASE_URL, build_request_payload
+from tests.utils import generate_structured
 
 SIMPLE_SCHEMA = {
     "title": "CityInfo",

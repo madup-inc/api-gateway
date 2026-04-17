@@ -6,7 +6,7 @@
 """
 import pytest
 
-from src.structured_output.client import generate_structured
+from tests.utils import generate_structured
 
 SINGLE_OBJECT_SCHEMA = {
     "title": "MySchema",

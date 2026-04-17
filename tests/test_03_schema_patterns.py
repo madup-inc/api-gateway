@@ -9,7 +9,7 @@
 """
 import pytest
 
-from src.structured_output.client import generate_structured
+from tests.utils import generate_structured
 
 # ── 스키마 정의 (description 추가로 모델 필드명 준수율 향상) ─────────────────────
 TICKET_CLASSIFICATION_SCHEMA = {
