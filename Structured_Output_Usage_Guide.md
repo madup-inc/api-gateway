@@ -167,7 +167,7 @@ class Ticket(BaseModel):
 
 <table>
 <tr><th colspan="2">Request</th></tr>
-<tr><th>Prompt</th><td>"2026년 AI 산업은 멀티모달 모델 중심으로 급성장 중..."</td></tr>
+<tr><th>Prompt</th><td>"다음 기사를 요약해줘.<br><br>2026년 인공지능 산업은 급속도로 발전하고 있습니다. 특히 멀티모달 모델과 에이전트 기술이 주목받고 있으며, 기업들의 AI 도입률도 크게 증가했습니다. 전문가들은 향후 5년간 AI가 대부분의 산업을 변화시킬 것으로 전망합니다."</td></tr>
 <tr><th>Pydantic Schema</th><td><pre><code>class Language(str, Enum):
     ko = "ko"
     en = "en"
