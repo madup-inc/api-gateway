@@ -38,13 +38,167 @@ Structured Output은 LLM의 응답을 미리 정의한 JSON Schema에 맞춰 반
 
 ### 활용 예시
 
-| Prompt | Pydantic Schema | Structured Output 응답 |
-|---|---|---|
-| `"서울의 인구를 알려줘."` | `class CityInfo(BaseModel):`<br>`  city: str`<br>`  population: int` | `{"city": "서울", "population": 9400000}` |
-| `"로그인 버튼 클릭 시 500 에러가 발생합니다."` | `class Ticket(BaseModel):`<br>`  category: Category  # enum`<br>`  priority: Priority  # enum`<br>`  summary: str` | `{"category": "bug", "priority": "critical", "summary": "로그인 500 에러"}` |
-| `"Invoice: ABC Co., INV-001, 2026-04-16, 총액 110,000원"` | `class Invoice(BaseModel):`<br>`  vendor_name: str`<br>`  invoice_number: str`<br>`  total: float` | `{"vendor_name": "ABC Co.", "invoice_number": "INV-001", "total": 110000.0}` |
-| `"커피가 맛있고 직원이 친절하지만 주차가 불편해요."` | `class Review(BaseModel):`<br>`  overall_score: float`<br>`  strengths: list[str]`<br>`  weaknesses: list[str]` | `{"overall_score": 7.5, "strengths": ["맛", "친절"], "weaknesses": ["주차"]}` |
-| `"2026년 AI 산업은 멀티모달 모델 중심으로 급성장 중..."` | `class Summary(BaseModel):`<br>`  title: str`<br>`  key_points: list[str]`<br>`  language: Language  # enum` | `{"title": "2026 AI 산업 동향", "key_points": ["멀티모달", "에이전트"], "language": "ko"}` |
+<table>
+<tr>
+  <th colspan="3" align="center">Request</th>
+  <th align="center">Response</th>
+</tr>
+<tr>
+  <th>Prompt</th>
+  <th>Pydantic Schema</th>
+  <th>JSON Schema</th>
+  <th>Structured Output 응답</th>
+</tr>
+<tr>
+<td>"서울의 인구를 알려줘."</td>
+<td><pre><code>class CityInfo(BaseModel):
+    city: str
+    population: int</code></pre></td>
+<td><pre><code>{
+  "title": "CityInfo",
+  "type": "object",
+  "properties": {
+    "city": {"type": "string"},
+    "population": {"type": "integer"}
+  },
+  "required": ["city", "population"]
+}</code></pre></td>
+<td><pre><code>{
+  "city": "서울",
+  "population": 9400000
+}</code></pre></td>
+</tr>
+<tr>
+<td>"로그인 버튼 클릭 시 500 에러가 발생합니다."</td>
+<td><pre><code>class Category(str, Enum):
+    bug = "bug"
+    feature = "feature_request"
+
+class Priority(str, Enum):
+    critical = "critical"
+    high = "high"
+
+class Ticket(BaseModel):
+    category: Category
+    priority: Priority
+    summary: str</code></pre></td>
+<td><pre><code>{
+  "title": "Ticket",
+  "type": "object",
+  "properties": {
+    "category": {
+      "type": "string",
+      "enum": ["bug", "feature_request"]
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["critical", "high"]
+    },
+    "summary": {"type": "string"}
+  },
+  "required": ["category", "priority", "summary"]
+}</code></pre></td>
+<td><pre><code>{
+  "category": "bug",
+  "priority": "critical",
+  "summary": "로그인 버튼 클릭 시 500 에러"
+}</code></pre></td>
+</tr>
+<tr>
+<td>"Invoice: ABC Co., INV-001, 2026-04-16, 총액 110,000원"</td>
+<td><pre><code>class Invoice(BaseModel):
+    vendor_name: str
+    invoice_number: str
+    total: float</code></pre></td>
+<td><pre><code>{
+  "title": "Invoice",
+  "type": "object",
+  "properties": {
+    "vendor_name": {"type": "string"},
+    "invoice_number": {"type": "string"},
+    "total": {"type": "number"}
+  },
+  "required": [
+    "vendor_name",
+    "invoice_number",
+    "total"
+  ]
+}</code></pre></td>
+<td><pre><code>{
+  "vendor_name": "ABC Co.",
+  "invoice_number": "INV-001",
+  "total": 110000.0
+}</code></pre></td>
+</tr>
+<tr>
+<td>"커피가 맛있고 직원이 친절하지만 주차가 불편해요."</td>
+<td><pre><code>class Review(BaseModel):
+    overall_score: float
+    strengths: list[str]
+    weaknesses: list[str]</code></pre></td>
+<td><pre><code>{
+  "title": "Review",
+  "type": "object",
+  "properties": {
+    "overall_score": {"type": "number"},
+    "strengths": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "weaknesses": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "required": [
+    "overall_score",
+    "strengths",
+    "weaknesses"
+  ]
+}</code></pre></td>
+<td><pre><code>{
+  "overall_score": 7.5,
+  "strengths": ["맛", "친절한 서비스"],
+  "weaknesses": ["주차 공간 부족"]
+}</code></pre></td>
+</tr>
+<tr>
+<td>"2026년 AI 산업은 멀티모달 모델 중심으로 급성장 중..."</td>
+<td><pre><code>class Language(str, Enum):
+    ko = "ko"
+    en = "en"
+
+class Summary(BaseModel):
+    title: str
+    key_points: list[str]
+    language: Language</code></pre></td>
+<td><pre><code>{
+  "title": "Summary",
+  "type": "object",
+  "properties": {
+    "title": {"type": "string"},
+    "key_points": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "language": {
+      "type": "string",
+      "enum": ["ko", "en"]
+    }
+  },
+  "required": ["title", "key_points", "language"]
+}</code></pre></td>
+<td><pre><code>{
+  "title": "2026 AI 산업 동향",
+  "key_points": [
+    "멀티모달 모델 부상",
+    "에이전트 기술 주목",
+    "기업 AI 도입 확대"
+  ],
+  "language": "ko"
+}</code></pre></td>
+</tr>
+</table>
 
 ---
 
