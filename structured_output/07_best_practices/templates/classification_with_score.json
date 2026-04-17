@@ -1,0 +1,13 @@
+{
+  "title": "Classification",
+  "type": "object",
+  "properties": {
+    "category": {
+      "type": "string",
+      "enum": ["cat_a", "cat_b", "cat_c"]
+    },
+    "confidence": { "type": "number" },
+    "reasoning": { "type": "string" }
+  },
+  "required": ["category", "confidence", "reasoning"]
+}
