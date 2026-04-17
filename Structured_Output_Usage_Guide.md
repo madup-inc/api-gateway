@@ -103,67 +103,7 @@ class Ticket(BaseModel):
 }</code></pre></td></tr>
 </table>
 
-**예시 3 — 추출 (Extraction)**
-
-<table>
-<tr><th colspan="2">Request</th></tr>
-<tr><th>Prompt</th><td>"Invoice: ABC Co., INV-001, 2026-04-16, 총액 110,000원"</td></tr>
-<tr><th>Pydantic Schema</th><td><pre><code>class Invoice(BaseModel):
-    vendor_name: str
-    invoice_number: str
-    total: float</code></pre></td></tr>
-<tr><th>Invoice.model_json_schema()</th><td><pre><code>{
-  "title": "Invoice",
-  "type": "object",
-  "properties": {
-    "vendor_name": {"type": "string"},
-    "invoice_number": {"type": "string"},
-    "total": {"type": "number"}
-  },
-  "required": ["vendor_name", "invoice_number", "total"]
-}</code></pre></td></tr>
-<tr><th colspan="2">Response</th></tr>
-<tr><th>Structured Output 응답</th><td><pre><code>{
-  "vendor_name": "ABC Co.",
-  "invoice_number": "INV-001",
-  "total": 110000.0
-}</code></pre></td></tr>
-</table>
-
-**예시 4 — 분석 (Analysis)**
-
-<table>
-<tr><th colspan="2">Request</th></tr>
-<tr><th>Prompt</th><td>"커피가 맛있고 직원이 친절하지만 주차가 불편해요."</td></tr>
-<tr><th>Pydantic Schema</th><td><pre><code>class Review(BaseModel):
-    overall_score: float
-    strengths: list[str]
-    weaknesses: list[str]</code></pre></td></tr>
-<tr><th>Review.model_json_schema()</th><td><pre><code>{
-  "title": "Review",
-  "type": "object",
-  "properties": {
-    "overall_score": {"type": "number"},
-    "strengths": {
-      "type": "array",
-      "items": {"type": "string"}
-    },
-    "weaknesses": {
-      "type": "array",
-      "items": {"type": "string"}
-    }
-  },
-  "required": ["overall_score", "strengths", "weaknesses"]
-}</code></pre></td></tr>
-<tr><th colspan="2">Response</th></tr>
-<tr><th>Structured Output 응답</th><td><pre><code>{
-  "overall_score": 7.5,
-  "strengths": ["맛", "친절한 서비스"],
-  "weaknesses": ["주차 공간 부족"]
-}</code></pre></td></tr>
-</table>
-
-**예시 5 — 변환 (Transformation)**
+**예시 3 — 변환 (Transformation)**
 
 <table>
 <tr><th colspan="2">Request</th></tr>
