@@ -269,6 +269,33 @@ class TicketAnalysis(BaseModel):
     sentiment: Sentiment
     priority: Priority
     tags: list[str]
+
+schema = TicketAnalysis.model_json_schema()
+```
+
+`model_json_schema()` 결과:
+
+```json
+{
+  "title": "TicketAnalysis",
+  "type": "object",
+  "properties": {
+    "title": { "type": "string" },
+    "sentiment": {
+      "type": "string",
+      "enum": ["positive", "negative", "neutral"]
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["critical", "high", "medium", "low"]
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["title", "sentiment", "priority", "tags"]
+}
 ```
 
 ### 2.3 중첩 모델
