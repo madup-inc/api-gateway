@@ -445,12 +445,36 @@ Pydantic 없이 JSON Schema를 직접 작성하거나, `model_json_schema()`가 
   "title": "SchemaName",         // 스키마 이름 (권장)
   "type": "object",              // 최상위 타입 (생략 시 object)
   "properties": {                // 필드 정의 (필수)
-    "field_name": {
+    "field_name": {              // 원하는 이름으로 자유롭게 지정 (예약어 아님)
       "type": "string",          // 필드 타입
       "description": "..."       // 모델이 필드 의도를 이해하는 데 도움
     }
   },
   "required": ["field_name"]     // 필수 필드 목록 (권장)
+}
+```
+
+예시 — 실제 필드명 적용:
+
+```json
+"response_schema": {
+  "title": "ProductReview",
+  "type": "object",
+  "properties": {
+    "product_name": {
+      "type": "string",
+      "description": "리뷰 대상 제품명"
+    },
+    "rating": {
+      "type": "integer",
+      "description": "평점 (1~5)"
+    },
+    "is_recommended": {
+      "type": "boolean",
+      "description": "추천 여부"
+    }
+  },
+  "required": ["product_name", "rating", "is_recommended"]
 }
 ```
 
