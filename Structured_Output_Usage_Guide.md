@@ -38,23 +38,15 @@ Structured Output은 LLM의 응답을 미리 정의한 JSON Schema에 맞춰 반
 
 ### 활용 예시
 
+**예시 1 — 데이터 조회**
+
 <table>
-<tr>
-  <th colspan="3" align="center">Request</th>
-  <th align="center">Response</th>
-</tr>
-<tr>
-  <th>Prompt</th>
-  <th>Pydantic Schema</th>
-  <th>JSON Schema</th>
-  <th>Structured Output 응답</th>
-</tr>
-<tr>
-<td>"서울의 인구를 알려줘."</td>
-<td><pre><code>class CityInfo(BaseModel):
+<tr><th colspan="2">Request</th></tr>
+<tr><th>Prompt</th><td>"서울의 인구를 알려줘."</td></tr>
+<tr><th>Pydantic Schema</th><td><pre><code>class CityInfo(BaseModel):
     city: str
-    population: int</code></pre></td>
-<td><pre><code>{
+    population: int</code></pre></td></tr>
+<tr><th>JSON Schema</th><td><pre><code>{
   "title": "CityInfo",
   "type": "object",
   "properties": {
@@ -62,15 +54,20 @@ Structured Output은 LLM의 응답을 미리 정의한 JSON Schema에 맞춰 반
     "population": {"type": "integer"}
   },
   "required": ["city", "population"]
-}</code></pre></td>
-<td><pre><code>{
+}</code></pre></td></tr>
+<tr><th colspan="2">Response</th></tr>
+<tr><th>Structured Output 응답</th><td><pre><code>{
   "city": "서울",
   "population": 9400000
-}</code></pre></td>
-</tr>
-<tr>
-<td>"로그인 버튼 클릭 시 500 에러가 발생합니다."</td>
-<td><pre><code>class Category(str, Enum):
+}</code></pre></td></tr>
+</table>
+
+**예시 2 — 분류 (Classification)**
+
+<table>
+<tr><th colspan="2">Request</th></tr>
+<tr><th>Prompt</th><td>"로그인 버튼 클릭 시 500 에러가 발생합니다."</td></tr>
+<tr><th>Pydantic Schema</th><td><pre><code>class Category(str, Enum):
     bug = "bug"
     feature = "feature_request"
 
@@ -81,8 +78,8 @@ class Priority(str, Enum):
 class Ticket(BaseModel):
     category: Category
     priority: Priority
-    summary: str</code></pre></td>
-<td><pre><code>{
+    summary: str</code></pre></td></tr>
+<tr><th>JSON Schema</th><td><pre><code>{
   "title": "Ticket",
   "type": "object",
   "properties": {
@@ -97,20 +94,25 @@ class Ticket(BaseModel):
     "summary": {"type": "string"}
   },
   "required": ["category", "priority", "summary"]
-}</code></pre></td>
-<td><pre><code>{
+}</code></pre></td></tr>
+<tr><th colspan="2">Response</th></tr>
+<tr><th>Structured Output 응답</th><td><pre><code>{
   "category": "bug",
   "priority": "critical",
   "summary": "로그인 버튼 클릭 시 500 에러"
-}</code></pre></td>
-</tr>
-<tr>
-<td>"Invoice: ABC Co., INV-001, 2026-04-16, 총액 110,000원"</td>
-<td><pre><code>class Invoice(BaseModel):
+}</code></pre></td></tr>
+</table>
+
+**예시 3 — 추출 (Extraction)**
+
+<table>
+<tr><th colspan="2">Request</th></tr>
+<tr><th>Prompt</th><td>"Invoice: ABC Co., INV-001, 2026-04-16, 총액 110,000원"</td></tr>
+<tr><th>Pydantic Schema</th><td><pre><code>class Invoice(BaseModel):
     vendor_name: str
     invoice_number: str
-    total: float</code></pre></td>
-<td><pre><code>{
+    total: float</code></pre></td></tr>
+<tr><th>JSON Schema</th><td><pre><code>{
   "title": "Invoice",
   "type": "object",
   "properties": {
@@ -118,25 +120,26 @@ class Ticket(BaseModel):
     "invoice_number": {"type": "string"},
     "total": {"type": "number"}
   },
-  "required": [
-    "vendor_name",
-    "invoice_number",
-    "total"
-  ]
-}</code></pre></td>
-<td><pre><code>{
+  "required": ["vendor_name", "invoice_number", "total"]
+}</code></pre></td></tr>
+<tr><th colspan="2">Response</th></tr>
+<tr><th>Structured Output 응답</th><td><pre><code>{
   "vendor_name": "ABC Co.",
   "invoice_number": "INV-001",
   "total": 110000.0
-}</code></pre></td>
-</tr>
-<tr>
-<td>"커피가 맛있고 직원이 친절하지만 주차가 불편해요."</td>
-<td><pre><code>class Review(BaseModel):
+}</code></pre></td></tr>
+</table>
+
+**예시 4 — 분석 (Analysis)**
+
+<table>
+<tr><th colspan="2">Request</th></tr>
+<tr><th>Prompt</th><td>"커피가 맛있고 직원이 친절하지만 주차가 불편해요."</td></tr>
+<tr><th>Pydantic Schema</th><td><pre><code>class Review(BaseModel):
     overall_score: float
     strengths: list[str]
-    weaknesses: list[str]</code></pre></td>
-<td><pre><code>{
+    weaknesses: list[str]</code></pre></td></tr>
+<tr><th>JSON Schema</th><td><pre><code>{
   "title": "Review",
   "type": "object",
   "properties": {
@@ -150,29 +153,30 @@ class Ticket(BaseModel):
       "items": {"type": "string"}
     }
   },
-  "required": [
-    "overall_score",
-    "strengths",
-    "weaknesses"
-  ]
-}</code></pre></td>
-<td><pre><code>{
+  "required": ["overall_score", "strengths", "weaknesses"]
+}</code></pre></td></tr>
+<tr><th colspan="2">Response</th></tr>
+<tr><th>Structured Output 응답</th><td><pre><code>{
   "overall_score": 7.5,
   "strengths": ["맛", "친절한 서비스"],
   "weaknesses": ["주차 공간 부족"]
-}</code></pre></td>
-</tr>
-<tr>
-<td>"2026년 AI 산업은 멀티모달 모델 중심으로 급성장 중..."</td>
-<td><pre><code>class Language(str, Enum):
+}</code></pre></td></tr>
+</table>
+
+**예시 5 — 변환 (Transformation)**
+
+<table>
+<tr><th colspan="2">Request</th></tr>
+<tr><th>Prompt</th><td>"2026년 AI 산업은 멀티모달 모델 중심으로 급성장 중..."</td></tr>
+<tr><th>Pydantic Schema</th><td><pre><code>class Language(str, Enum):
     ko = "ko"
     en = "en"
 
 class Summary(BaseModel):
     title: str
     key_points: list[str]
-    language: Language</code></pre></td>
-<td><pre><code>{
+    language: Language</code></pre></td></tr>
+<tr><th>JSON Schema</th><td><pre><code>{
   "title": "Summary",
   "type": "object",
   "properties": {
@@ -187,8 +191,9 @@ class Summary(BaseModel):
     }
   },
   "required": ["title", "key_points", "language"]
-}</code></pre></td>
-<td><pre><code>{
+}</code></pre></td></tr>
+<tr><th colspan="2">Response</th></tr>
+<tr><th>Structured Output 응답</th><td><pre><code>{
   "title": "2026 AI 산업 동향",
   "key_points": [
     "멀티모달 모델 부상",
@@ -196,8 +201,7 @@ class Summary(BaseModel):
     "기업 AI 도입 확대"
   ],
   "language": "ko"
-}</code></pre></td>
-</tr>
+}</code></pre></td></tr>
 </table>
 
 ---
