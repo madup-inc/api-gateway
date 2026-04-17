@@ -210,11 +210,29 @@ class Summary(BaseModel):
 
 Python에서 Structured Output을 사용하는 권장 방법입니다. Pydantic `BaseModel`로 원하는 응답 구조를 정의하고, `model_json_schema()`로 JSON Schema를 자동 생성하여 API에 전달합니다.
 
+### 2.0 환경 설정
+
+```python
+import os
+from src.structured_output.auth import get_cognito_token
+
+BASE_URL = os.environ.get("AI_API_BASE_URL", "http://ai-api-gateway.tech.madup")
+
+HEADERS = {
+    "Content-Type": "application/json",
+    "X-Cognito-Token": get_cognito_token(),  # Cognito 인증 토큰
+}
+```
+
+`.env` 파일에 `AI_API_BASE_URL`을 설정하거나, 기본값(`http://ai-api-gateway.tech.madup`)이 사용됩니다. `get_cognito_token()`은 내부 인증 토큰을 자동으로 발급합니다.
+
 ### 2.1 기본 흐름
+
+`generate_structured` 헬퍼를 사용하면 스키마 정의와 API 호출을 간결하게 처리할 수 있습니다.
 
 ```python
 from pydantic import BaseModel
-import requests
+from src.structured_output.client import generate_structured
 
 # 1. 원하는 응답 구조를 Pydantic 모델로 정의
 class CityInfo(BaseModel):
@@ -222,32 +240,32 @@ class CityInfo(BaseModel):
     population: int
     area_km2: float
 
-# 2. model_json_schema()로 JSON Schema 자동 생성
-schema = CityInfo.model_json_schema()
-# → {"title": "CityInfo", "type": "object", "properties": {...}, "required": [...]}
-
-# 3. config에 schema를 담아 API 호출
-response = requests.post(
-    f"{BASE_URL}/v1/tasks/generate-text",
-    headers=HEADERS,
-    json={
-        "payload": {
-            "model": "gemini-3-flash-preview",
-            "contents": ["서울의 인구와 면적을 알려줘."],
-            "config": {
-                "response_mime_type": "application/json",   # 필수
-                "response_schema": CityInfo.model_json_schema(),  # 필수
-                "temperature": 0.3
-            }
-        }
-    }
+# 2. generate_structured로 호출 — 내부적으로 model_json_schema()를 그대로 전달
+result = generate_structured(
+    ["서울의 인구와 면적을 알려줘."],
+    CityInfo.model_json_schema(),
+    temperature=0.3,
 )
 
-data = response.json()
-if data["status"] == "success":
-    city = CityInfo(**data["result"]["parsed"])
-    print(f"{city.city}: 인구 {city.population:,}명")
+# 3. 결과를 Pydantic 모델로 파싱
+city = CityInfo(**result)
+print(f"{city.city}: 인구 {city.population:,}명")
 ```
+
+**API 응답 구조** (내부적으로 `generate_structured`가 처리하는 raw response):
+
+```json
+{
+  "status": "success",
+  "result": {
+    "parsed": {"city": "서울", "population": 9411260, "area_km2": 605.21},
+    "text": "{\"city\": \"서울\", \"population\": 9411260, \"area_km2\": 605.21}",
+    "candidates": [{"finish_reason": "STOP"}]
+  }
+}
+```
+
+`result.parsed`에 파싱된 딕셔너리가 있으면 그대로 반환하고, `null`이면 `result.text`를 직접 파싱합니다. `finish_reason`이 `STOP`이 아니면 오류로 처리합니다 (자세한 내용은 [섹션 5](#5-에러-처리와-엣지-케이스) 참조).
 
 ### 2.2 Enum 활용
 
@@ -284,7 +302,7 @@ schema = TicketAnalysis.model_json_schema()
   "title": "TicketAnalysis",
   "type": "object",
   "properties": {
-    "title": { "type": "string" },
+    "title": {"type": "string"},
     "sentiment": {
       "type": "string",
       "enum": ["positive", "negative", "neutral"]
@@ -295,7 +313,7 @@ schema = TicketAnalysis.model_json_schema()
     },
     "tags": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {"type": "string"}
     }
   },
   "required": ["title", "sentiment", "priority", "tags"]
@@ -319,12 +337,40 @@ class Recipe(BaseModel):
     ingredients: list[Ingredient]   # 객체 배열
     cooking_time: str
 
-class RecipeBook(BaseModel):
-    recipes: list[Recipe]           # 중첩 배열
-
-# 자동 생성된 스키마가 모든 중첩 구조를 포함합니다
-schema = RecipeBook.model_json_schema()
+schema = Recipe.model_json_schema()
 ```
+
+`model_json_schema()` 결과:
+
+```json
+{
+  "title": "Recipe",
+  "type": "object",
+  "properties": {
+    "recipe_name": {"type": "string"},
+    "ingredients": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/Ingredient"}
+    },
+    "cooking_time": {"type": "string"}
+  },
+  "required": ["recipe_name", "ingredients", "cooking_time"],
+  "$defs": {
+    "Ingredient": {
+      "title": "Ingredient",
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "quantity": {"type": "string"},
+        "category": {"type": "string"}
+      },
+      "required": ["name", "quantity", "category"]
+    }
+  }
+}
+```
+
+중첩 모델은 `$defs`에 정의되고 `$ref`로 참조됩니다. API는 이 구조를 그대로 해석합니다.
 
 ### 2.4 Optional 필드
 
@@ -340,7 +386,34 @@ class ProductInfo(BaseModel):
     discount_rate: Optional[float] = None    # 할인이 없을 수 있음
     description: Optional[str] = None        # 설명이 없을 수 있음
     in_stock: bool
+
+schema = ProductInfo.model_json_schema()
 ```
+
+`model_json_schema()` 결과:
+
+```json
+{
+  "title": "ProductInfo",
+  "type": "object",
+  "properties": {
+    "name": {"type": "string"},
+    "price": {"type": "number"},
+    "discount_rate": {
+      "anyOf": [{"type": "number"}, {"type": "null"}],
+      "default": null
+    },
+    "description": {
+      "anyOf": [{"type": "string"}, {"type": "null"}],
+      "default": null
+    },
+    "in_stock": {"type": "boolean"}
+  },
+  "required": ["name", "price", "in_stock"]
+}
+```
+
+`Optional` 필드는 `anyOf: [type, null]`로 변환되고 `required`에서 제외됩니다.
 
 ---
 
@@ -356,7 +429,8 @@ Pydantic 없이 JSON Schema를 직접 작성하거나, `model_json_schema()`가 
   "type": "object",              // 최상위 타입 (생략 시 object)
   "properties": {                // 필드 정의 (필수)
     "field_name": {
-      "type": "string"           // 필드 타입
+      "type": "string",          // 필드 타입
+      "description": "..."       // 모델이 필드 의도를 이해하는 데 도움
     }
   },
   "required": ["field_name"]     // 필수 필드 목록 (권장)
@@ -451,25 +525,66 @@ Pydantic 없이 JSON Schema를 직접 작성하거나, `model_json_schema()`가 
 
 ### 4.1 분류 (Classification)
 
-텍스트를 특정 카테고리로 분류하는 패턴입니다. `enum`을 활용하면 결과가 반드시 정해진 값 중 하나로 나옵니다.
+텍스트를 특정 카테고리로 분류하는 패턴입니다. `enum`을 활용하면 결과가 반드시 정해진 값 중 하나로 나옵니다. `Field(description=...)`을 추가하면 모델이 각 필드의 의도를 더 정확히 이해합니다.
+
+**Pydantic**
+
+```python
+from enum import Enum
+from pydantic import BaseModel, Field
+
+class Category(str, Enum):
+    bug = "bug"
+    feature_request = "feature_request"
+    question = "question"
+    improvement = "improvement"
+
+class Priority(str, Enum):
+    critical = "critical"
+    high = "high"
+    medium = "medium"
+    low = "low"
+
+class Team(str, Enum):
+    backend = "backend"
+    frontend = "frontend"
+    infra = "infra"
+    data = "data"
+    design = "design"
+
+class TicketClassification(BaseModel):
+    category: Category = Field(description="Type of the support ticket")
+    priority: Priority = Field(description="Priority level of the ticket")
+    assigned_team: Team = Field(description="Team responsible for handling this ticket")
+    summary: str = Field(description="Brief one-sentence summary of the ticket")
+```
+
+**JSON Schema** (`TicketClassification.model_json_schema()`)
 
 ```json
 {
   "title": "TicketClassification",
+  "type": "object",
   "properties": {
     "category": {
       "type": "string",
-      "enum": ["bug", "feature_request", "question", "improvement"]
+      "enum": ["bug", "feature_request", "question", "improvement"],
+      "description": "Type of the support ticket"
     },
     "priority": {
       "type": "string",
-      "enum": ["critical", "high", "medium", "low"]
+      "enum": ["critical", "high", "medium", "low"],
+      "description": "Priority level of the ticket"
     },
     "assigned_team": {
       "type": "string",
-      "enum": ["backend", "frontend", "infra", "data", "design"]
+      "enum": ["backend", "frontend", "infra", "data", "design"],
+      "description": "Team responsible for handling this ticket"
     },
-    "summary": { "type": "string" }
+    "summary": {
+      "type": "string",
+      "description": "Brief one-sentence summary of the ticket"
+    }
   },
   "required": ["category", "priority", "assigned_team", "summary"]
 }
@@ -479,32 +594,59 @@ Pydantic 없이 JSON Schema를 직접 작성하거나, `model_json_schema()`가 
 
 비정형 텍스트에서 특정 정보를 구조화하여 추출하는 패턴입니다.
 
+**Pydantic**
+
+```python
+from pydantic import BaseModel, Field
+
+class LineItem(BaseModel):
+    description: str = Field(description="Item description")
+    quantity: int = Field(description="Quantity of items")
+    unit_price: float = Field(description="Price per unit")
+    amount: float = Field(description="Total amount for this line item")
+
+class InvoiceExtraction(BaseModel):
+    vendor_name: str = Field(description="Name of the vendor/supplier company")
+    invoice_number: str = Field(description="Invoice identification number")
+    date: str = Field(description="Invoice date in YYYY-MM-DD format")
+    items: list[LineItem] = Field(description="List of line items")
+    subtotal: float = Field(description="Subtotal before tax")
+    tax: float = Field(description="Tax amount")
+    total: float = Field(description="Total amount including tax")
+```
+
+**JSON Schema** (`InvoiceExtraction.model_json_schema()`)
+
 ```json
 {
   "title": "InvoiceExtraction",
+  "type": "object",
   "properties": {
-    "vendor_name": { "type": "string" },
-    "invoice_number": { "type": "string" },
-    "date": { "type": "string" },
+    "vendor_name": {"type": "string", "description": "Name of the vendor/supplier company"},
+    "invoice_number": {"type": "string", "description": "Invoice identification number"},
+    "date": {"type": "string", "description": "Invoice date in YYYY-MM-DD format"},
     "items": {
       "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "description": { "type": "string" },
-          "quantity": { "type": "integer" },
-          "unit_price": { "type": "number" },
-          "amount": { "type": "number" }
-        },
-        "required": ["description", "quantity", "unit_price", "amount"]
-      }
+      "description": "List of line items",
+      "items": {"$ref": "#/$defs/LineItem"}
     },
-    "subtotal": { "type": "number" },
-    "tax": { "type": "number" },
-    "total": { "type": "number" }
+    "subtotal": {"type": "number", "description": "Subtotal before tax"},
+    "tax": {"type": "number", "description": "Tax amount"},
+    "total": {"type": "number", "description": "Total amount including tax"}
   },
-  "required": ["vendor_name", "invoice_number", "date", "items",
-               "subtotal", "tax", "total"]
+  "required": ["vendor_name", "invoice_number", "date", "items", "subtotal", "tax", "total"],
+  "$defs": {
+    "LineItem": {
+      "type": "object",
+      "properties": {
+        "description": {"type": "string"},
+        "quantity": {"type": "integer"},
+        "unit_price": {"type": "number"},
+        "amount": {"type": "number"}
+      },
+      "required": ["description", "quantity", "unit_price", "amount"]
+    }
+  }
 }
 ```
 
@@ -512,39 +654,58 @@ Pydantic 없이 JSON Schema를 직접 작성하거나, `model_json_schema()`가 
 
 분석 결과를 여러 관점으로 구조화하는 패턴입니다. 점수, 분류, 설명을 함께 받을 수 있습니다.
 
+**Pydantic**
+
+```python
+from enum import Enum
+from pydantic import BaseModel, Field
+
+class AspectSentiment(str, Enum):
+    positive = "positive"
+    negative = "negative"
+    neutral = "neutral"
+    mixed = "mixed"
+
+class Aspect(BaseModel):
+    aspect: str = Field(description="Name of the aspect being analyzed")
+    score: float = Field(description="Score for this aspect from 0 to 10")
+    sentiment: AspectSentiment = Field(description="Sentiment for this aspect")
+    evidence: str = Field(description="Evidence from the text supporting this score")
+
+class ContentAnalysis(BaseModel):
+    overall_score: float = Field(description="Overall score from 0 to 10")
+    aspects: list[Aspect] = Field(description="List of analyzed aspects")
+    strengths: list[str] = Field(description="List of positive points")
+    weaknesses: list[str] = Field(description="List of negative points or areas for improvement")
+    recommendation: str = Field(description="Overall recommendation based on the analysis")
+```
+
+**JSON Schema** (`ContentAnalysis.model_json_schema()`)
+
 ```json
 {
   "title": "ContentAnalysis",
+  "type": "object",
   "properties": {
-    "overall_score": { "type": "number" },
-    "aspects": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "aspect": { "type": "string" },
-          "score": { "type": "number" },
-          "sentiment": {
-            "type": "string",
-            "enum": ["positive", "negative", "neutral", "mixed"]
-          },
-          "evidence": { "type": "string" }
-        },
-        "required": ["aspect", "score", "sentiment", "evidence"]
-      }
-    },
-    "strengths": {
-      "type": "array",
-      "items": { "type": "string" }
-    },
-    "weaknesses": {
-      "type": "array",
-      "items": { "type": "string" }
-    },
-    "recommendation": { "type": "string" }
+    "overall_score": {"type": "number", "description": "Overall score from 0 to 10"},
+    "aspects": {"type": "array", "items": {"$ref": "#/$defs/Aspect"}},
+    "strengths": {"type": "array", "items": {"type": "string"}, "description": "List of positive points"},
+    "weaknesses": {"type": "array", "items": {"type": "string"}, "description": "List of negative points"},
+    "recommendation": {"type": "string", "description": "Overall recommendation"}
   },
-  "required": ["overall_score", "aspects", "strengths",
-               "weaknesses", "recommendation"]
+  "required": ["overall_score", "aspects", "strengths", "weaknesses", "recommendation"],
+  "$defs": {
+    "Aspect": {
+      "type": "object",
+      "properties": {
+        "aspect": {"type": "string"},
+        "score": {"type": "number"},
+        "sentiment": {"type": "string", "enum": ["positive", "negative", "neutral", "mixed"]},
+        "evidence": {"type": "string"}
+      },
+      "required": ["aspect", "score", "sentiment", "evidence"]
+    }
+  }
 }
 ```
 
@@ -552,29 +713,44 @@ Pydantic 없이 JSON Schema를 직접 작성하거나, `model_json_schema()`가 
 
 입력 데이터를 다른 구조로 변환하는 패턴입니다. 예를 들어 원문을 요약하면서 메타데이터를 함께 생성하는 경우입니다.
 
+**Pydantic**
+
+```python
+from enum import Enum
+from pydantic import BaseModel, Field
+
+class Language(str, Enum):
+    ko = "ko"
+    en = "en"
+    ja = "ja"
+    zh = "zh"
+
+class ArticleSummary(BaseModel):
+    title: str = Field(description="Title of the article")
+    summary: str = Field(description="2-3 sentence summary of the article")
+    key_points: list[str] = Field(description="List of main points from the article")
+    word_count: int = Field(description="Approximate word count of the original article")
+    reading_time_minutes: int = Field(description="Estimated reading time in minutes")
+    language: Language = Field(description="Language code of the article")
+    topics: list[str] = Field(description="Main topics covered in the article")
+```
+
+**JSON Schema** (`ArticleSummary.model_json_schema()`)
+
 ```json
 {
   "title": "ArticleSummary",
+  "type": "object",
   "properties": {
-    "title": { "type": "string" },
-    "summary": { "type": "string" },
-    "key_points": {
-      "type": "array",
-      "items": { "type": "string" }
-    },
-    "word_count": { "type": "integer" },
-    "reading_time_minutes": { "type": "integer" },
-    "language": {
-      "type": "string",
-      "enum": ["ko", "en", "ja", "zh"]
-    },
-    "topics": {
-      "type": "array",
-      "items": { "type": "string" }
-    }
+    "title": {"type": "string", "description": "Title of the article"},
+    "summary": {"type": "string", "description": "2-3 sentence summary"},
+    "key_points": {"type": "array", "items": {"type": "string"}, "description": "List of main points"},
+    "word_count": {"type": "integer", "description": "Approximate word count"},
+    "reading_time_minutes": {"type": "integer", "description": "Estimated reading time in minutes"},
+    "language": {"type": "string", "enum": ["ko", "en", "ja", "zh"], "description": "Language code"},
+    "topics": {"type": "array", "items": {"type": "string"}, "description": "Main topics"}
   },
-  "required": ["title", "summary", "key_points", "word_count",
-               "reading_time_minutes", "language", "topics"]
+  "required": ["title", "summary", "key_points", "word_count", "reading_time_minutes", "language", "topics"]
 }
 ```
 
@@ -582,27 +758,47 @@ Pydantic 없이 JSON Schema를 직접 작성하거나, `model_json_schema()`가 
 
 여러 항목을 비교 분석하여 구조화하는 패턴입니다.
 
+**Pydantic**
+
+```python
+from pydantic import BaseModel, Field
+
+class Product(BaseModel):
+    name: str = Field(description="Product name")
+    pros: list[str] = Field(description="List of advantages")
+    cons: list[str] = Field(description="List of disadvantages")
+    score: float = Field(description="Overall score from 0 to 10")
+
+class ProductComparison(BaseModel):
+    products: list[Product] = Field(description="List of products being compared")
+    winner: str = Field(description="Name of the winning product")
+    reasoning: str = Field(description="Explanation for why the winner was chosen")
+```
+
+**JSON Schema** (`ProductComparison.model_json_schema()`)
+
 ```json
 {
   "title": "ProductComparison",
+  "type": "object",
   "properties": {
-    "products": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "name": { "type": "string" },
-          "pros": { "type": "array", "items": { "type": "string" } },
-          "cons": { "type": "array", "items": { "type": "string" } },
-          "score": { "type": "number" }
-        },
-        "required": ["name", "pros", "cons", "score"]
-      }
-    },
-    "winner": { "type": "string" },
-    "reasoning": { "type": "string" }
+    "products": {"type": "array", "items": {"$ref": "#/$defs/Product"}, "description": "List of products"},
+    "winner": {"type": "string", "description": "Name of the winning product"},
+    "reasoning": {"type": "string", "description": "Explanation for why the winner was chosen"}
   },
-  "required": ["products", "winner", "reasoning"]
+  "required": ["products", "winner", "reasoning"],
+  "$defs": {
+    "Product": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "pros": {"type": "array", "items": {"type": "string"}},
+        "cons": {"type": "array", "items": {"type": "string"}},
+        "score": {"type": "number"}
+      },
+      "required": ["name", "pros", "cons", "score"]
+    }
+  }
 }
 ```
 
@@ -637,7 +833,9 @@ if finish == "MAX_TOKENS":
     )
 ```
 
-### 5.3 권장 에러 처리 패턴
+### 5.3 generate_structured 내부 구현
+
+섹션 2.1에서 소개한 `generate_structured` 헬퍼의 전체 구현입니다. 위의 에러 처리 패턴이 모두 포함되어 있습니다.
 
 ```python
 import json
@@ -648,7 +846,7 @@ def generate_structured(contents, schema, **config_opts):
     response = requests.post(
         f"{BASE_URL}/v1/tasks/generate-text",
         headers=HEADERS,
-        timeout=30,
+        timeout=60,
         json={
             "payload": {
                 "model": "gemini-3-flash-preview",
@@ -661,6 +859,10 @@ def generate_structured(contents, schema, **config_opts):
             }
         }
     )
+
+    if not response.ok:
+        raise RuntimeError(f"HTTP {response.status_code}: {response.text[:200]}")
+
     data = response.json()
 
     if data["status"] != "success":
@@ -691,6 +893,7 @@ def generate_structured(contents, schema, **config_opts):
 ### 6.1 스키마 설계
 
 - 필드 이름을 명확하고 설명적으로 작성하세요 (`s` → `sentiment`, `desc` → `description`)
+- `Field(description=...)`으로 각 필드의 의도를 명시하세요. 모델의 응답 품질이 높아집니다
 - `required` 배열에 핵심 필드를 모두 명시하세요. 누락을 방지합니다
 - `enum`을 적극 활용하세요. 모델이 예측 불가능한 값을 반환하는 것을 방지합니다
 - 중첩은 3단계 이하로 유지하세요. 너무 깊으면 토큰 소모가 커집니다
@@ -716,6 +919,13 @@ def generate_structured(contents, schema, **config_opts):
 
 ### 단일 객체
 
+```python
+class MySchema(BaseModel):
+    name: str
+    value: float
+    active: bool
+```
+
 ```json
 {
   "title": "MySchema",
@@ -729,6 +939,15 @@ def generate_structured(contents, schema, **config_opts):
 ```
 
 ### 객체 배열
+
+```python
+class Item(BaseModel):
+    id: int
+    name: str
+
+class MyList(BaseModel):
+    items: list[Item]
+```
 
 ```json
 {
@@ -751,6 +970,18 @@ def generate_structured(contents, schema, **config_opts):
 ```
 
 ### 분류 + 점수
+
+```python
+class Cat(str, Enum):
+    cat_a = "cat_a"
+    cat_b = "cat_b"
+    cat_c = "cat_c"
+
+class Classification(BaseModel):
+    category: Cat
+    confidence: float
+    reasoning: str
+```
 
 ```json
 {
