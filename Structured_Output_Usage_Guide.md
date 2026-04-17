@@ -8,17 +8,44 @@ http://ai-api-gateway.tech.madup
 
 ## 목차
 
-1. [Structured Output이란?](#1-structured-output이란)
-2. [Pydantic으로 스키마 정의하기](#2-pydantic으로-스키마-정의하기)
-3. [JSON Schema 구조 참조](#3-json-schema-구조-참조)
-4. [스키마 설계 패턴](#4-스키마-설계-패턴)
-5. [에러 처리와 엣지 케이스](#5-에러-처리와-엣지-케이스)
-6. [베스트 프랙티스](#6-베스트-프랙티스)
+1. [베스트 프랙티스](#1-베스트-프랙티스)
+2. [Structured Output이란?](#2-structured-output이란)
+3. [Pydantic으로 스키마 정의하기](#3-pydantic으로-스키마-정의하기)
+4. [JSON Schema 구조 참조](#4-json-schema-구조-참조)
+5. [스키마 설계 패턴](#5-스키마-설계-패턴)
+6. [에러 처리와 엣지 케이스](#6-에러-처리와-엣지-케이스)
 7. [빠른 참조 (스키마 템플릿)](#7-빠른-참조-스키마-템플릿)
 
 ---
 
-## 1. Structured Output이란?
+## 1. 베스트 프랙티스
+
+Google 공식 문서에서 잘 다루지 않는, 실제 사용 시 알아야 할 핵심 포인트입니다.
+
+### 1.1 스키마 설계
+
+- 필드 이름을 명확하고 설명적으로 작성하세요 (`s` → `sentiment`, `desc` → `description`)
+- `Field(description=...)`으로 각 필드의 의도를 명시하세요. 모델의 응답 품질이 높아집니다
+- `required` 배열에 핵심 필드를 모두 명시하세요. 누락을 방지합니다
+- `enum`을 적극 활용하세요. 모델이 예측 불가능한 값을 반환하는 것을 방지합니다
+- 중첩은 3단계 이하로 유지하세요. 너무 깊으면 토큰 소모가 커집니다
+- 불필요한 필드는 제거하세요. 스키마가 단순할수록 응답 품질이 높아집니다
+
+### 1.2 성능 최적화
+
+- 추출/분류 작업은 `thinking_level: "low"`로 속도를 높이세요
+- `temperature`를 낮게 (0.0~0.3) 설정하면 스키마 준수율이 높아집니다
+- `max_output_tokens`를 스키마 크기에 맞게 적절히 설정하세요
+
+### 1.3 안정성
+
+- `use_retry: true` (기본값)를 유지하여 일시적 오류에 대비하세요
+- `finish_reason`을 항상 확인하여 `MAX_TOKENS` 및 `SAFETY`를 감지하세요
+- `parsed`가 `null`인 경우를 대비한 폴백 로직을 구현하세요
+
+---
+
+## 2. Structured Output이란?
 
 Structured Output은 LLM의 응답을 미리 정의한 JSON Schema에 맞춰 반환받는 기능입니다. 자연어 텍스트 대신 타입이 보장된 구조화 데이터를 받아 프로그래밍 방식으로 안전하게 처리할 수 있습니다.
 
@@ -146,11 +173,11 @@ class Summary(BaseModel):
 
 ---
 
-## 2. Pydantic으로 스키마 정의하기
+## 3. Pydantic으로 스키마 정의하기
 
 Python에서 Structured Output을 사용하는 권장 방법입니다. Pydantic `BaseModel`로 원하는 응답 구조를 정의하고, `model_json_schema()`로 JSON Schema를 자동 생성하여 API에 전달합니다.
 
-### 2.0 환경 설정
+### 3.0 환경 설정
 
 ```python
 import os
@@ -166,7 +193,7 @@ HEADERS = {
 
 `.env` 파일에 `AI_API_BASE_URL`을 설정하거나, 기본값(`http://ai-api-gateway.tech.madup`)이 사용됩니다. `get_cognito_token()`은 내부 인증 토큰을 자동으로 발급합니다.
 
-### 2.1 기본 흐름
+### 3.1 기본 흐름
 
 ```python
 import json
@@ -222,9 +249,9 @@ if data["status"] == "success":
     print(f"{city.city}: 인구 {city.population:,}명")
 ```
 
-`result.parsed`에 파싱된 딕셔너리가 있으면 그대로 사용하고, `null`이면 `result.text`를 직접 파싱합니다. `finish_reason`이 `STOP`이 아닌 경우 처리 방법은 [섹션 5](#5-에러-처리와-엣지-케이스)를 참조하세요.
+`result.parsed`에 파싱된 딕셔너리가 있으면 그대로 사용하고, `null`이면 `result.text`를 직접 파싱합니다. `finish_reason`이 `STOP`이 아닌 경우 처리 방법은 [섹션 6](#6-에러-처리와-엣지-케이스)을 참조하세요.
 
-### 2.2 Enum 활용
+### 3.2 Enum 활용
 
 enum 필드를 정의하면 모델이 반드시 지정한 값 중 하나로만 응답합니다.
 
@@ -277,7 +304,7 @@ schema = TicketAnalysis.model_json_schema()
 }
 ```
 
-### 2.3 중첩 모델
+### 3.3 중첩 모델
 
 다른 `BaseModel`을 필드 타입으로 사용하면 중첩 구조를 쉽게 표현할 수 있습니다.
 
@@ -329,7 +356,7 @@ schema = Recipe.model_json_schema()
 
 중첩 모델은 `$defs`에 정의되고 `$ref`로 참조됩니다. API는 이 구조를 그대로 해석합니다.
 
-### 2.4 Optional 필드
+### 3.4 Optional 필드
 
 `null`이 허용되는 필드는 `Optional`을 사용합니다. 모델이 해당 정보를 찾지 못할 경우 `null`을 반환합니다.
 
@@ -374,11 +401,11 @@ schema = ProductInfo.model_json_schema()
 
 ---
 
-## 3. JSON Schema 구조 참조
+## 4. JSON Schema 구조 참조
 
 Pydantic 없이 JSON Schema를 직접 작성하거나, `model_json_schema()`가 생성하는 구조를 이해하고 싶을 때 참조합니다.
 
-### 3.1 Schema 기본 구조
+### 4.1 Schema 기본 구조
 
 ```json
 "response_schema": {
@@ -418,7 +445,7 @@ Pydantic 없이 JSON Schema를 직접 작성하거나, `model_json_schema()`가 
 }
 ```
 
-### 3.2 기본 타입
+### 4.2 기본 타입
 
 | 타입 | 스키마 표기 | 설명 |
 |---|---|---|
@@ -427,7 +454,7 @@ Pydantic 없이 JSON Schema를 직접 작성하거나, `model_json_schema()`가 
 | `number` | `{"type": "number"}` | 실수. 소수점 포함 가능 |
 | `boolean` | `{"type": "boolean"}` | `true` / `false` |
 
-### 3.3 복합 타입
+### 4.3 복합 타입
 
 #### Array (배열)
 
@@ -502,9 +529,9 @@ Pydantic 없이 JSON Schema를 직접 작성하거나, `model_json_schema()`가 
 
 ---
 
-## 4. 스키마 설계 패턴
+## 5. 스키마 설계 패턴
 
-### 4.1 분류 (Classification)
+### 5.1 분류 (Classification)
 
 텍스트를 특정 카테고리로 분류하는 패턴입니다. `enum`을 활용하면 결과가 반드시 정해진 값 중 하나로 나옵니다. `Field(description=...)`을 추가하면 모델이 각 필드의 의도를 더 정확히 이해합니다.
 
@@ -571,7 +598,7 @@ class TicketClassification(BaseModel):
 }
 ```
 
-### 4.2 추출 (Extraction)
+### 5.2 추출 (Extraction)
 
 비정형 텍스트에서 특정 정보를 구조화하여 추출하는 패턴입니다.
 
@@ -631,7 +658,7 @@ class InvoiceExtraction(BaseModel):
 }
 ```
 
-### 4.3 분석 (Analysis)
+### 5.3 분석 (Analysis)
 
 분석 결과를 여러 관점으로 구조화하는 패턴입니다. 점수, 분류, 설명을 함께 받을 수 있습니다.
 
@@ -690,7 +717,7 @@ class ContentAnalysis(BaseModel):
 }
 ```
 
-### 4.4 변환 (Transformation)
+### 5.4 변환 (Transformation)
 
 입력 데이터를 다른 구조로 변환하는 패턴입니다. 예를 들어 원문을 요약하면서 메타데이터를 함께 생성하는 경우입니다.
 
@@ -735,7 +762,7 @@ class ArticleSummary(BaseModel):
 }
 ```
 
-### 4.5 비교/평가 (Comparison)
+### 5.5 비교/평가 (Comparison)
 
 여러 항목을 비교 분석하여 구조화하는 패턴입니다.
 
@@ -785,9 +812,9 @@ class ProductComparison(BaseModel):
 
 ---
 
-## 5. 에러 처리와 엣지 케이스
+## 6. 에러 처리와 엣지 케이스
 
-### 5.1 parsed가 null인 경우
+### 6.1 parsed가 null인 경우
 
 API 응답의 `result.parsed`는 게이트웨이가 자동으로 JSON을 파싱한 결과입니다. 스키마를 완전히 준수하지 못한 경우 `null`이 반환될 수 있으므로, `result.text`를 폴백으로 직접 파싱해야 합니다.
 
@@ -802,7 +829,7 @@ if result.get("parsed") is not None:
 return json.loads(result["text"])
 ```
 
-### 5.2 MAX_TOKENS 처리
+### 6.2 MAX_TOKENS 처리
 
 `candidates[0]["finish_reason"]`가 `"MAX_TOKENS"`이면 출력이 중간에 잘려 JSON이 불완전합니다. 이 경우 파싱을 시도하지 말고 즉시 오류를 발생시켜야 합니다.
 
@@ -814,7 +841,7 @@ if finish == "MAX_TOKENS":
     )
 ```
 
-### 5.3 권장 에러 처리 패턴
+### 6.3 권장 에러 처리 패턴
 
 위의 처리를 모두 포함한 전체 요청 코드입니다.
 
@@ -857,31 +884,6 @@ if finish == "MAX_TOKENS":
 # parsed 확인 후 폴백
 parsed = result.get("parsed") or json.loads(result["text"])
 ```
-
----
-
-## 6. 베스트 프랙티스
-
-### 6.1 스키마 설계
-
-- 필드 이름을 명확하고 설명적으로 작성하세요 (`s` → `sentiment`, `desc` → `description`)
-- `Field(description=...)`으로 각 필드의 의도를 명시하세요. 모델의 응답 품질이 높아집니다
-- `required` 배열에 핵심 필드를 모두 명시하세요. 누락을 방지합니다
-- `enum`을 적극 활용하세요. 모델이 예측 불가능한 값을 반환하는 것을 방지합니다
-- 중첩은 3단계 이하로 유지하세요. 너무 깊으면 토큰 소모가 커집니다
-- 불필요한 필드는 제거하세요. 스키마가 단순할수록 응답 품질이 높아집니다
-
-### 6.2 성능 최적화
-
-- 추출/분류 작업은 `thinking_level: "low"`로 속도를 높이세요
-- `temperature`를 낮게 (0.0~0.3) 설정하면 스키마 준수율이 높아집니다
-- `max_output_tokens`를 스키마 크기에 맞게 적절히 설정하세요
-
-### 6.3 안정성
-
-- `use_retry: true` (기본값)를 유지하여 일시적 오류에 대비하세요
-- `finish_reason`을 항상 확인하여 `MAX_TOKENS` 및 `SAFETY`를 감지하세요
-- `parsed`가 `null`인 경우를 대비한 폴백 로직을 구현하세요
 
 ---
 
